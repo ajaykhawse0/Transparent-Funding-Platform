@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transparent Funding Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.6.1/dist/web3.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        text-align: center;
+      }
+      input,
+      textarea,
+      button {
+        padding: 10px;
+        margin: 10px;
+        width: 80%;
+        max-width: 400px;
+      }
+      #projects {
+        margin-top: 20px;
+        text-align: left;
+      }
+      .project {
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        background-color: #f9f9f9;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Transparent Funding Platform</h1>
+    <div>
+      <button id="connectButton">Connect MetaMask</button>
+      <p id="account"></p>
+    </div>
+
+    <h3>Create a New Project</h3>
+    <input type="text" id="projectName" placeholder="Project Name" /><br />
+    <textarea
+      id="projectDescription"
+      rows="4"
+      placeholder="Project Description"
+    ></textarea
+    ><br />
+    <input
+      type="number"
+      id="fundingGoal"
+      placeholder="Funding Goal (in ETH)"
+    /><br />
+    <input
+      type="number"
+      id="duration"
+      placeholder="Funding Duration (in seconds)"
+    /><br />
+    <button id="createProjectButton">Create Project</button>
+
+    <h3>Donate to a Project</h3>
+    <input
+      type="number"
+      id="donationAmount"
+      placeholder="Amount to Donate (in ETH)"
+    /><br />
+    <input
+      type="number"
+      id="donateToProjectId"
+      placeholder="Project ID"
+    /><br />
+    <button id="donateButton">Donate</button>
+
+    <h3>Projects</h3>
+    <div id="projects"></div>
+
+    <script>
+      let web3;
+      let contract;
+      let account;
+      Y;
+      const contractAddress = "0x66076ABe00C1F05a5cD90E107aaD39Ed21b0EE44"; // Replace with your contract address
+      const contractABI = [
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "projectId",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "address",
+              name: "donor",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "amount",
+              type: "uint256",
+            },
+          ],
+          name: "FundsDonated",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "projectId",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "address",
+              name: "owner",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "amount",
+              type: "uint256",
+            },
+          ],
+          name: "FundsWithdrawn",
+          type: "event",
+        },
+        {
+          anonymous: false,
+          inputs: [
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "projectId",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "address",
+              name: "owner",
+              type: "address",
+            },
+            {
+              indexed: false,
+              internalType: "string",
+              name: "name",
+              type: "string",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "fundingGoal",
+              type: "uint256",
+            },
+            {
+              indexed: false,
+              internalType: "uint256",
+              name: "deadline",
+              type: "uint256",
+            },
+          ],
+          name: "ProjectCreated",
+          type: "event",
+        },
+        {
+          inputs: [
+            {
+              internalType: "string",
+              name: "name",
+              type: "string",
+            },
+            {
+              internalType: "string",
+              name: "description",
+              type: "string",
+            },
+            {
+              internalType: "uint256",
+              name: "fundingGoal",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "duration",
+              type: "uint256",
+            },
+          ],
+          name: "createProject",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "projectId",
+              type: "uint256",
+            },
+          ],
+          name: "donate",
+          outputs: [],
+          stateMutability: "payable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "projectId",
+              type: "uint256",
+            },
+          ],
+          name: "getProjectStatus",
+          outputs: [
+            {
+              internalType: "string",
+              name: "name",
+              type: "string",
+            },
+            {
+              internalType: "string",
+              name: "description",
+              type: "string",
+            },
+            {
+              internalType: "uint256",
+              name: "fundingGoal",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "totalFunds",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "remainingTime",
+              type: "uint256",
+            },
+            {
+              internalType: "bool",
+              name: "goalReached",
+              type: "bool",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [],
+          name: "projectCount",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          name: "projects",
+          outputs: [
+            {
+              internalType: "address payable",
+              name: "owner",
+              type: "address",
+            },
+            {
+              internalType: "string",
+              name: "name",
+              type: "string",
+            },
+            {
+              internalType: "string",
+              name: "description",
+              type: "string",
+            },
+            {
+              internalType: "uint256",
+              name: "fundingGoal",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "totalFunds",
+              type: "uint256",
+            },
+            {
+              internalType: "uint256",
+              name: "deadline",
+              type: "uint256",
+            },
+            {
+              internalType: "bool",
+              name: "goalReached",
+              type: "bool",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "uint256",
+              name: "projectId",
+              type: "uint256",
+            },
+          ],
+          name: "withdrawFunds",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+      ];
+      window.addEventListener("load", async () => {
+        if (window.ethereum) {
+          web3 = new Web3(window.ethereum);
+          try {
+            await ethereum.request({ method: "eth_requestAccounts" });
+            account = (await web3.eth.getAccounts())[0];
+            document.getElementById(
+              "account"
+            ).innerText = `Connected Account: ${account}`;
+            contract = new web3.eth.Contract(contractABI, contractAddress);
+            loadProjects();
+          } catch (error) {
+            console.error("Error connecting MetaMask:", error);
+          }
+        } else {
+          alert("Please install MetaMask to use this feature.");
+        }
+      });
+
+      document
+        .getElementById("createProjectButton")
+        .addEventListener("click", async () => {
+          const name = document.getElementById("projectName").value;
+          const description =
+            document.getElementById("projectDescription").value;
+          const fundingGoal = web3.utils.toWei(
+            document.getElementById("fundingGoal").value,
+            "ether"
+          );
+          const duration = document.getElementById("duration").value;
+
+          if (!name || !description || !fundingGoal || !duration) {
+            alert("Please fill out all fields.");
+            return;
+          }
+
+          try {
+            await contract.methods
+              .createProject(name, description, fundingGoal, duration)
+              .send({ from: account });
+            loadProjects();
+          } catch (error) {
+            console.error("Error creating project:", error);
+          }
+        });
+
+      document
+        .getElementById("donateButton")
+        .addEventListener("click", async () => {
+          const projectId = document.getElementById("donateToProjectId").value;
+          const donationAmount =
+            document.getElementById("donationAmount").value;
+          const amountInWei = web3.utils.toWei(donationAmount, "ether");
+
+          if (!projectId || !donationAmount) {
+            alert("Please enter both Project ID and donation amount.");
+            return;
+          }
+
+          try {
+            await contract.methods.donate(projectId).send({
+              from: account,
+              value: amountInWei,
+            });
+            loadProjects();
+          } catch (error) {
+            console.error("Error donating:", error);
+          }
+        });
+
+      async function loadProjects() {
+        const projectsDiv = document.getElementById("projects");
+        projectsDiv.innerHTML = ""; // Clear existing projects
+
+        const projectCount = await contract.methods.projectCount().call();
+
+        for (let i = 0; i < projectCount; i++) {
+          const status = await contract.methods.getProjectStatus(i).call();
+          const projectDiv = document.createElement("div");
+          projectDiv.classList.add("project");
+          projectDiv.innerHTML = `
+            <h4>${status.name}</h4>
+            <p>${status.description}</p>
+            <p>Goal: ${web3.utils.fromWei(status.fundingGoal, "ether")} ETH</p>
+            <p>Funds Raised: ${web3.utils.fromWei(
+              status.totalFunds,
+              "ether"
+            )} ETH</p>
+            <p>Remaining Time: ${status.remainingTime} seconds</p>
+            <p>Goal Reached: ${status.goalReached ? "Yes" : "No"}</p>
+            <p><strong>Project ID: ${i}</strong></p>
+            ${
+              status.goalReached && status.remainingTime === "0"
+                ? `<button onclick="withdrawFunds(${i})">Withdraw Funds</button>`
+                : ""
+            }
+          `;
+          projectsDiv.appendChild(projectDiv);
+        }
+      }
+
+      async function withdrawFunds(projectId) {
+        try {
+          await contract.methods
+            .withdrawFunds(projectId)
+            .send({ from: account });
+          loadProjects();
+        } catch (error) {
+          console.error("Error withdrawing funds:", error);
+        }
+      }
+    </script>
+  </body>
+</html>
